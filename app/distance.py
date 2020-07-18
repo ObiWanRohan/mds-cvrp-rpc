@@ -2,8 +2,13 @@ import numpy as np
 import logging
 
 
-def create_vectorized_haversine_li(origin_lat:float, origin_lon:float, dest_lons:list, 
-dest_lats:list, unit:str='mi'):
+def create_vectorized_haversine_li(
+    origin_lat: float,
+    origin_lon: float,
+    dest_lons: list,
+    dest_lats: list,
+    unit: str = "mi",
+):
     """
     haversine formula: https://en.wikipedia.org/wiki/Haversine_formula
 
@@ -13,17 +18,20 @@ dest_lats:list, unit:str='mi'):
     dlat = dest_lats - origin_lat
     dlon = dest_lons - origin_lon
 
-    a = np.sin(dlat/2)**2 + np.cos(origin_lat) * np.cos(dest_lats) * np.sin(dlon/2)**2
+    a = (
+        np.sin(dlat / 2) ** 2
+        + np.cos(origin_lat) * np.cos(dest_lats) * np.sin(dlon / 2) ** 2
+    )
     c = 2 * np.arcsin(np.sqrt(a))
 
-    r = {
-        'mi': 3956,
-        'km': 6371
-    }[unit]
+    r = {"mi": 3956, "km": 6371}[unit]
 
     return c * r
 
-def create_matrix(origin_lat:float, origin_lon:float, dest_lats:list, dest_lons: list):
+
+def create_matrix(
+    origin_lat: float, origin_lon: float, dest_lats: list, dest_lons: list
+):
     """
     creates matrix using optimized matrix processing.
 
@@ -42,17 +50,15 @@ def create_matrix(origin_lat:float, origin_lon:float, dest_lats:list, dest_lons:
     matrix = []
     for i in range(len(lats)):
         distances = create_vectorized_haversine_li(
-            origin_lat=lats[i],
-            origin_lon=lons[i],
-            dest_lats=lats,
-            dest_lons=lons
+            origin_lat=lats[i], origin_lon=lons[i], dest_lats=lats, dest_lons=lons
         )
 
         # must be integer for solver
         distances = np.ceil(distances * 100).astype(int)
         matrix.append(distances)
-    
+
     return matrix
+
 
 class DBSCAN:
     def __init__(self, x, y, epsilon=0.5, minpts=2):
@@ -60,11 +66,11 @@ class DBSCAN:
         self.minpts = minpts
 
     def to_dict(self):
-        _dict = {'epsilon': self.epsilon, 'minpts': self.minpts}
+        _dict = {"epsilon": self.epsilon, "minpts": self.minpts}
         try:
-            _dict['n X'] = len(self.X)
+            _dict["n X"] = len(self.X)
         except:
-            logging.debug('X has not been set.')
+            logging.debug("X has not been set.")
         return _dict
 
     def fit(self, x, y):
@@ -77,7 +83,7 @@ class DBSCAN:
         for j in range(0, len(X)):
             a = np.array(X[i])
             b = np.array(X[j])
-            if np.linalg.norm(a-b) < epsilon:
+            if np.linalg.norm(a - b) < epsilon:
                 neighbors.append(j)
         return neighbors
 
@@ -109,7 +115,8 @@ class DBSCAN:
                 cluster += 1
                 self.build_cluster(i, points, cluster)
 
-def add_closest_clusters(x:list, y:list, clusters:list):
+
+def add_closest_clusters(x: list, y: list, clusters: list):
     """
     Takes a list of x, a list of y, and a list of clusters to
     process clusters for x, y without an assigned cluster.
@@ -123,39 +130,41 @@ def add_closest_clusters(x:list, y:list, clusters:list):
     
     return list of clusters
     """
-    
+
     missing_clusters = np.where(clusters == np.nan)[0]
     has_clusters = np.where(clusters != np.nan)[0]
-    
+
     x_copy = np.array(x, dtype=float)
     x_copy[missing_clusters] = np.inf
 
     y_copy = np.array(y, dtype=float)
     y_copy[missing_clusters] = np.inf
-    
+
     for i in missing_clusters:
         x_deltas = abs(x[i] - x_copy)
         y_deltas = abs(y[i] - y_copy)
         deltas = x_deltas + y_deltas
-        
+
         clusters[i] = clusters[np.argmin(deltas)]
 
     # return -1 if None
     clusters = np.nan_to_num(clusters, copy=True, nan=-1)
-    
+
     return clusters
 
-def create_dbscan_basic(x:list, y:list):
-    epsilon = 0.79585 # approximate degree delta for 50 miles
-    minpts = 2 # at least cluster 2
+
+def create_dbscan_basic(x: list, y: list):
+    epsilon = 0.79585  # approximate degree delta for 50 miles
+    minpts = 2  # at least cluster 2
 
     dbscan = DBSCAN(epsilon, minpts)
     dbscan.fit(x, y)
     dbscan.cluster()
-    
+
     return dbscan
 
-def create_dbscan_clusters(latitudes:list, longitudes:list):
+
+def create_dbscan_clusters(latitudes: list, longitudes: list):
     """
     Uses DBSCAN clutering algorithm to identify groups of nodes based
     on their distance from eachother
@@ -170,10 +179,10 @@ def create_dbscan_clusters(latitudes:list, longitudes:list):
     y = np.array(longitudes, dtype=float) + 180
 
     dbscan = create_dbscan_basic(x, y)
-    
+
     # add those without an assigned cluster
     # to their closest cluster
     clusters = np.where(dbscan.clusters > 0, dbscan.clusters, np.nan)
     clusters = add_closest_clusters(x, y, clusters)
-    
+
     return clusters
